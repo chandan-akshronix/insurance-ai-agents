@@ -1,12 +1,9 @@
-"""
-Medical exam workflow handler for insurance underwriting
-"""
-
-from typing import Dict, Any
 from datetime import datetime
+from typing import Dict, Any
+from app_server.agent.state import AgentState
+from app_server.utils.clients import db
 
-
-def check_medical_exam_status(state: Dict[str, Any], db) -> Dict[str, Any]:
+def medical_exam_node(state: AgentState) -> AgentState:
     """
     Check if medical exam is required and handle the workflow.
     
@@ -19,6 +16,7 @@ def check_medical_exam_status(state: Dict[str, Any], db) -> Dict[str, Any]:
     
     Returns updated state with medical_exam_workflow section.
     """
+    print("--- Medical Exam Node ---")
     health = state.get('health_underwriting', {})
     medical_required = health.get('medical_exam_required', False)
     
@@ -30,9 +28,8 @@ def check_medical_exam_status(state: Dict[str, Any], db) -> Dict[str, Any]:
     
     if not medical_required:
         medical_workflow['status'] = 'not_required'
-        state['medical_exam_workflow'] = medical_workflow
         print("ℹ️  Medical exam not required - proceeding with underwriting")
-        return state
+        return {"medical_exam_workflow": medical_workflow}
     
     # Medical exam is required - check if report exists
     app = state.get('application', {})
@@ -42,8 +39,7 @@ def check_medical_exam_status(state: Dict[str, Any], db) -> Dict[str, Any]:
     if not pan_number:
         medical_workflow['status'] = 'error'
         medical_workflow['error'] = 'PAN number not found'
-        state['medical_exam_workflow'] = medical_workflow
-        return state
+        return {"medical_exam_workflow": medical_workflow}
     
     # Check MongoDB for existing medical report
     try:
@@ -104,8 +100,7 @@ def check_medical_exam_status(state: Dict[str, Any], db) -> Dict[str, Any]:
         medical_workflow['error'] = str(e)
         print(f"❌ Error checking medical reports: {e}")
     
-    state['medical_exam_workflow'] = medical_workflow
-    return state
+    return {"medical_exam_workflow": medical_workflow}
 
 
 def compute_medical_priority(state: Dict[str, Any]) -> str:
@@ -128,84 +123,3 @@ def compute_medical_priority(state: Dict[str, Any]) -> str:
     # Low priority: Small coverage and low risk
     else:
         return 'LOW'
-
-
-def should_proceed_without_medical(state: Dict[str, Any]) -> bool:
-    """
-    Determine if underwriting should proceed without medical exam results.
-    
-    For POC: Return False (wait for medicals)
-    For Production: Might return True for certain low-risk cases with conditional approval
-    """
-    medical_workflow = state.get('medical_exam_workflow', {})
-    
-    # If medical exam not required, proceed
-    if medical_workflow.get('status') == 'not_required':
-        return True
-    
-    # If medical report found, proceed
-    if medical_workflow.get('report_found'):
-        return True
-    
-    # If medical pending, check policy - for POC, we wait
-    # In production, you might allow conditional approval for low-risk cases
-    return False
-
-
-def integrate_medical_findings_llm(state: Dict[str, Any], client) -> Dict[str, Any]:
-    """
-    If medical report was found, integrate findings into health risk assessment using LLM.
-    This updates the health_underwriting risk score based on actual medical data.
-    """
-    medical_workflow = state.get('medical_exam_workflow', {})
-    
-    # Only proceed if medical report was found
-    if not medical_workflow.get('report_found'):
-        return state
-    
-    medical_data = medical_workflow.get('medical_data', {})
-    original_health = state.get('health_underwriting', {})
-    
-    prompt = f"""
-You are a medical underwriter. Review the medical examination results and update the health risk assessment.
-
-Original Health Assessment:
-{original_health}
-
-Medical Exam Results:
-{medical_data}
-
-Return JSON only with:
-- updated_risk_score (0-1, considering medical findings)
-- risk_adjustment (+/- value from original score)
-- medical_findings_summary (2-3 sentences)
-- critical_findings (list of any concerning results)
-- recommendation: Accept | Manual Review | Decline
-
-Rules:
-- Normal BP (<140/90), cholesterol (<200), blood sugar (<126) -> no change or -0.1
-- Borderline results -> +0.1 to +0.2
-- Abnormal results -> +0.3 to +0.5
-- Multiple abnormalities -> Manual Review or Decline
-"""
-    
-    try:
-        import json
-        from openai import AzureOpenAI
-        
-        # This would use your existing Azure OpenAI client
-        # For now, return a placeholder
-        updated_health = {
-            'original_risk_score': original_health.get('risk_score', 0),
-            'medical_exam_integrated': True,
-            'medical_findings_summary': 'Medical exam results reviewed and integrated',
-            'status': 'updated'
-        }
-        
-        state['health_underwriting_with_medicals'] = updated_health
-        print("✅ Medical findings integrated into health assessment")
-        
-    except Exception as e:
-        print(f"⚠️  Could not integrate medical findings: {e}")
-    
-    return state

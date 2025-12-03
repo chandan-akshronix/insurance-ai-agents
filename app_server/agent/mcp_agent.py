@@ -1,57 +1,52 @@
 import logging
-import os
-from langchain_mcp_adapters.client import MultiServerMCPClient
-from langgraph.prebuilt import create_react_agent
 import asyncio
-from llm.openai_client import create_openai_chat_client
-from utils.config import get_config_value
-from openai import AzureOpenAI
+from langchain_core.tools import tool
+from langgraph.prebuilt import create_react_agent
+from app_server.utils.clients import azure_client
+from app_server.utils.helpers import call_mcp_tool
 
 # Enable observability for the application
 
-async def weather_forecast(message: str):
+@tool
+def get_insurance_history(pan_number: str) -> dict:
     """
-    Demonstrates the tool-calling feature of LLMs. Here we ask a question to get weather forecast for a
-    city. We use two tools, one to map the city to a (latitude, longitude) tuple from a csv file,
-    and then another tool which calls open-meteo to get the current weather condition in a
-    particular latitude and longitude.
-
-    The tools are provided above as get_lat_long and get_weather.
+    Fetch insurance history for a given PAN number.
+    Returns details about past policies, claims, and rejections.
     """
+    try:
+        return call_mcp_tool("insurance_history", pan_number)
+    except Exception as e:
+        return {"error": f"Failed to fetch insurance history: {str(e)}"}
 
-    client = MultiServerMCPClient(
-        {
-            "weather": {
-                "transport": "streamable_http",
-                "url": get_config_value("weather_mcp_url")
-            },
-        }
-    )
+@tool
+def get_financial_eligibility(pan_number: str) -> dict:
+    """
+    Fetch financial eligibility data for a given PAN number.
+    Returns credit score, income verification, and other financial metrics.
+    """
+    try:
+        return call_mcp_tool("financial_eligibility", pan_number)
+    except Exception as e:
+        return {"error": f"Failed to fetch financial eligibility: {str(e)}"}
 
-    tools = await client.get_tools()
+async def insurance_agent_demo(message: str):
+    """
+    Demonstrates the tool-calling feature of LLMs using our Insurance MCP tools.
+    """
+    
+    tools = [get_insurance_history, get_financial_eligibility]
     logging.info(f"Received request: {message}")
 
-    
-
-    llm = AzureOpenAI(model="GPT-4o",
-    api_version="2024-12-01-preview",
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_key=os.getenv("AZURE_OPENAI_KEY"),
-)   
-
-#   llm = create_openai_chat_client(model="gpt-4o",
-#                                temperature=0.0001,
-#                                   api_version="2023-05-15",
-#                                   max_tokens=1024)
-
-    agent = create_react_agent(llm, tools, prompt="provide a textual explanation or summary alongside the tool call")
+    # Use shared azure_client
+    agent = create_react_agent(azure_client, tools, prompt="You are an insurance assistant. Use the provided tools to answer questions about insurance history and financial eligibility.")
 
     logging.info(f"Starting the execution of the agent.")
-    weather_response = await agent.ainvoke({"messages": [f"{message}"]})
+    response = await agent.ainvoke({"messages": [f"{message}"]})
 
-    logging.info(f"LLM response received: {weather_response}")
-    return weather_response
+    logging.info(f"LLM response received: {response}")
+    return response
 
 if __name__ == "__main__":
-    result = asyncio.run(weather_forecast("How is the weather in CA"))
+    # Example usage
+    result = asyncio.run(insurance_agent_demo("Check financial eligibility for PAN ABCDE1234F"))
     print(result)

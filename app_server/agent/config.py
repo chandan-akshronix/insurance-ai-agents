@@ -63,6 +63,9 @@ AZURE_CONFIG = {
     'temperature': 0.0  # Deterministic for underwriting decisions
 }
 
+# Azure Blob Storage SAS Token
+AZURE_SAS_TOKEN = "sp=r&st=2025-12-02T04:58:24Z&se=2026-01-05T13:13:24Z&sv=2024-11-04&sr=c&sig=yJY3Lbmn%2BxWnK1saE1pScu5KT2sDARNeF7B9zzPWPR4%3D"
+
 # MongoDB collections
 MONGODB_COLLECTIONS = {
     'applications': 'applications',
