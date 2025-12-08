@@ -32,29 +32,79 @@ workflow.add_node("report", report_node)
 
 workflow.set_entry_point("ingest")
 
-workflow.add_edge("ingest", "document_processing")
-workflow.add_edge("ingest", "fetch_mcp")
-workflow.add_edge("ingest", "health")
-workflow.add_edge("ingest", "occupation")
+# 1. Ingest -> Document Processing (Conditional)
+# Check if ingest was successful before proceeding
+def check_ingest_success(state: AgentState):
+    if state.get("error"):
+        print(f"⛔ Ingest failed with error: {state.get('error')}. Stopping workflow.")
+        return "report"
+    return "document_processing"
 
-# Branch A: Document Processing -> KYC
+workflow.add_conditional_edges(
+    "ingest",
+    check_ingest_success,
+    {
+        "document_processing": "document_processing",
+        "report": "report"
+    }
+)
+
+# 2. Document Processing -> KYC (Sequential First)
+# We run KYC first to fail fast if identity is not verified
 workflow.add_edge("document_processing", "kyc")
-workflow.add_edge("kyc", "decision")
 
-# Branch B: MCP -> Financial & Insurance History
-workflow.add_edge("fetch_mcp", "financial")
+# 3. KYC -> Parallel Branches (Conditional)
+# If KYC fails, we stop. If passes, we fan out.
+def check_kyc_outcome(state: AgentState):
+    kyc_data = state.get("kyc_reconciliation", {})
+    status = kyc_data.get("kyc_status", "").lower()
+    
+    # Fail fast on Rejected or High Risk
+    if status == "rejected":
+        print("⛔ KYC Rejected. Stopping workflow early.")
+        return "report"
+        
+    # Otherwise proceed to parallel branches
+    return ["fetch_mcp", "health", "occupation"]
+
+workflow.add_conditional_edges(
+    "kyc",
+    check_kyc_outcome,
+    {
+        "fetch_mcp": "fetch_mcp",
+        "health": "health",
+        "occupation": "occupation",
+        "report": "report"
+    }
+)
+
+# Branch B: MCP -> Insurance History -> Financial -> Decision
 workflow.add_edge("fetch_mcp", "insurance_history")
+workflow.add_edge("insurance_history", "financial")
 workflow.add_edge("financial", "decision")
-workflow.add_edge("insurance_history", "decision")
 
-# Branch C: Health -> Medical Exam
+# Branch C: Health -> Medical Exam -> Decision
 workflow.add_edge("health", "medical_exam")
 workflow.add_edge("medical_exam", "decision")
 
-# Branch D: Occupation
-# workflow.add_edge("occupation", "decision") # Removed to ensure decision waits for longer branches
+# Branch D: Occupation -> Decision
+workflow.add_edge("occupation", "decision")
 
 workflow.add_edge("decision", "report")
 workflow.add_edge("report", END)
 
-insurance_graph = workflow.compile()
+from langgraph.checkpoint.mongodb import MongoDBSaver
+from app_server.utils.clients import MONGODB_URI
+from pymongo import MongoClient
+# from langgraph.checkpoint.memory import MemorySaver
+
+# Initialize MongoDB Client and Checkpointer
+# We use a separate synchronous client for the checkpointer because MongoDBSaver performs sync I/O in __init__
+mongodb_client = MongoClient(MONGODB_URI)
+checkpointer = MongoDBSaver(mongodb_client)
+# checkpointer = MemorySaver()
+
+insurance_graph = workflow.compile(
+    checkpointer=checkpointer,
+    interrupt_before=["report"]
+)

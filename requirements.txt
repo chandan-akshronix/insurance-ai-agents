@@ -36,3 +36,4 @@ openinference-instrumentation-langchain>=0.1.43
 pymongo>=4.6.1
 fpdf>=1.7.2
 python-dotenv>=1.0.0
+langgraph-checkpoint-mongodb>=0.0.9

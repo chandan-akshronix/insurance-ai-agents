@@ -17,19 +17,46 @@ def ensure_azure_url_has_sas(url: str, sas_token: str = AZURE_SAS_TOKEN) -> str:
         return url
         
     if 'blob.core.windows.net' in url:
-        # If URL already has a SAS token, return as is
-        if '?' in url and ('sig=' in url or 'sv=' in url):
-            return url
-        # If we have a SAS token, append it
+        # Parse the URL to handle encoding correctly
+        from urllib.parse import urlparse, urlunparse, quote
+        
+        parsed = urlparse(url)
+        # Encode the path to handle spaces and special characters, preserving slashes
+        encoded_path = quote(parsed.path, safe='/')
+        
+        # Reconstruct the base URL with encoded path
+        # We temporarily remove query to handle SAS token logic cleanly
+        base_url = urlunparse((parsed.scheme, parsed.netloc, encoded_path, parsed.params, '', ''))
+        
+        # Check if original URL already had a SAS token (in query)
+        if parsed.query and ('sig=' in parsed.query or 'sv=' in parsed.query):
+            # If it had a SAS token, just return the encoded version of the full URL
+            return urlunparse((parsed.scheme, parsed.netloc, encoded_path, parsed.params, parsed.query, parsed.fragment))
+            
+        # If we have a SAS token to append
         elif sas_token:
-            # Remove any trailing ? or & from the URL
-            base_url = url.rstrip('?&')
-            # Add SAS token (it should already include the leading ? or &)
-            # If sas_token doesn't start with ? or &, assume it needs ?
-            prefix = ""
-            if not sas_token.startswith(('?', '&')):
-                prefix = "?"
-            return f"{base_url}{prefix}{sas_token}"
+            # Ensure SAS token starts with ? or &
+            prefix = "?"
+            if sas_token.startswith(('?', '&')):
+                prefix = "" # SAS token already has the separator
+            elif parsed.query:
+                prefix = "&" # Existing query params, so append with &
+            else:
+                prefix = "?" # No existing query params
+            
+            # Combine
+            final_query = f"{parsed.query}{prefix}{sas_token}" if parsed.query else f"{sas_token.lstrip('?&')}"
+            if not parsed.query and not sas_token.startswith(('?', '&')):
+                 # If no existing query and sas_token is just the string, we need ?
+                 final_query = sas_token
+            
+            # Simpler approach:
+            # 1. Base URL is scheme + netloc + encoded_path
+            # 2. Query is sas_token (stripping leading ?/&)
+            
+            clean_sas = sas_token.lstrip('?&')
+            return f"{base_url}?{clean_sas}"
+            
     return url
 
 def call_mcp_tool(tool_name: str, arg: str, mcp_base_url: str = "http://localhost:9000") -> dict:
@@ -134,3 +161,20 @@ def fetch_application_from_mongodb(application_id: str, collection_name: str = "
         except:
             pass
         raise ValueError(f"Failed to fetch application: {str(e)}")
+
+def parse_currency(value) -> float:
+    """
+    Robustly parse currency string to float.
+    Handles: "1,00,000", "₹ 50000", "$1000", etc.
+    """
+    if not value:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    
+    # Remove common currency symbols and commas
+    clean_val = str(value).replace(",", "").replace("₹", "").replace("$", "").replace(" ", "")
+    try:
+        return float(clean_val)
+    except ValueError:
+        return 0.0

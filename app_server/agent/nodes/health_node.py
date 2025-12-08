@@ -54,6 +54,46 @@ def health_node(state: AgentState):
         bmi=bmi,
         guidelines=guidelines_excerpt
     )
+    
+    # --- Precision Underwriting: Non-Medical Limits ---
+    # Grid:
+    # Age < 35: Limit 15L (General)
+    # Age 36-50: Limit 10L
+    # Age > 50: Limit 5L
+    
+    non_medical_limit_breach = False
+    limit_reason = ""
+    
+    # Get Age and SA
+    personal = app.get("personal_details", {})
+    policy = app.get("coverage_selection", {})
+    sa = float(policy.get("coverageAmount", 0))
+    
+    age = 30 # Default
+    if personal.get("dob"):
+        try:
+            from datetime import datetime
+            birth_date = datetime.strptime(personal["dob"], "%Y-%m-%d")
+            age = (datetime.now() - birth_date).days // 365
+        except:
+            pass
+            
+    # Check Limits (General Business)
+    limit = 0
+    if age <= 35:
+        limit = 1500000
+    elif age <= 50:
+        limit = 1000000
+    else:
+        limit = 500000
+        
+    if sa > limit:
+        non_medical_limit_breach = True
+        limit_reason = f"Sum Assured ({sa}) exceeds Non-Medical Limit ({limit}) for Age {age}."
+        
+    # Append to prompt
+    if non_medical_limit_breach:
+        prompt += f"\n\nIMPORTANT RULE: {limit_reason}\nYou MUST recommend a Medical Exam."
 
     try:
         resp = azure_client.beta.chat.completions.parse(
@@ -64,6 +104,16 @@ def health_node(state: AgentState):
         )
         parsed_output = resp.choices[0].message.parsed
         out = parsed_output.model_dump()
+        
+        # Override if Non-Medical Limit Breached
+        if non_medical_limit_breach:
+            out["medical_exam_required"] = True
+            if limit_reason not in out.get("exam_reasons", []):
+                out.setdefault("exam_reasons", []).append(limit_reason)
+            out["recommendation"] = f"Medical Exam Required: {limit_reason}"
+            # Ensure risk score reflects this requirement (at least medium risk)
+            if out.get("risk_score", 0) < 50:
+                out["risk_score"] = 55.0
     except Exception as e:
         print(f"❌ Error in Health LLM: {e}")
         out = {

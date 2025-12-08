@@ -1,0 +1,229 @@
+{
+  "status": "paused_for_review",
+  "message": "Workflow paused for manual review. Call /approve to proceed.",
+  "thread_id": "APP-1764838956",
+  "decision": {
+    "decision": "Manual Review",
+    "final_score": 0.225,
+    "reasons": [
+      "KYC status requires manual review due to mismatches and red flags.",
+      "Occupation risk score is medium, necessitating further evaluation."
+    ],
+    "conditions": [
+      "Verify KYC details with additional documentation.",
+      "Confirm occupation details and associated risks."
+    ]
+  },
+  "ui_visualization": [
+    {
+      "stage_name": "Customer Submission",
+      "status": "Completed (Issues Found)",
+      "icon": "check_circle",
+      "details": {
+        "input_data": {
+          "summary": "Customer Form Data",
+          "fields": {
+            "Name": null,
+            "DOB": null,
+            "Documents Uploaded": 0
+          }
+        },
+        "agent_analysis": [
+          "\u2705 Validated mandatory fields",
+          "\u2705 Checked document formats",
+          "\u2705 Normalized data structures",
+          "\u26a0\ufe0f Missing section: personal_details",
+          "\u26a0\ufe0f Missing section: contact_info",
+          "\u26a0\ufe0f Missing section: health_info",
+          "\u26a0\ufe0f Missing section: coverage_selection",
+          "\u26a0\ufe0f Missing section: nominee_details",
+          "\u26a0\ufe0f Missing section: payment"
+        ],
+        "outcome": {
+          "result": "Accepted for processing",
+          "completeness": "95%"
+        }
+      }
+    },
+    {
+      "stage_name": "Data Validation & Fraud",
+      "status": "Completed",
+      "icon": "shield",
+      "details": {
+        "input_data": {
+          "summary": "Uploaded Documents & Personal Details",
+          "documents_processed": 0,
+          "document_list": []
+        },
+        "agent_analysis": [
+          "\u2705 OCR Extraction completed",
+          "\u2705 Fuzzy Name Matching performed",
+          "\u2705 Document Classification checked",
+          "\u2705 Forgery/Tampering analysis done",
+          "\ud83d\udea9 Non-Standard proof used"
+        ],
+        "outcome": {
+          "result": "Manual Review",
+          "confidence": "70%"
+        }
+      }
+    },
+    {
+      "stage_name": "Risk Assessment",
+      "status": "Completed",
+      "icon": "analytics",
+      "details": {
+        "input_data": {
+          "summary": "Health Questionnaire & Financial Disclosures",
+          "bmi": null,
+          "annual_income": "\u20b90"
+        },
+        "agent_analysis": [
+          "\u2705 BMI Calculated: None",
+          "\u2705 Non-Medical Limits Checked",
+          "\u2705 TRSA Calculated",
+          "\u2705 Income Proof Verified"
+        ],
+        "outcome": {
+          "health_risk": "Low",
+          "financial_eligibility": null,
+          "medical_exam_required": false
+        }
+      }
+    },
+    {
+      "stage_name": "Decision Agent",
+      "status": "Completed",
+      "icon": "gavel",
+      "details": {
+        "input_data": {
+          "summary": "Aggregated Risk Scores",
+          "scores": {
+            "Health": 25.0,
+            "Financial": null,
+            "KYC": null
+          }
+        },
+        "agent_analysis": [
+          "Weighting Risk Scores",
+          "Checking for Auto-Decline Rules",
+          "Formulating Final Recommendation"
+        ],
+        "outcome": {
+          "decision": "Manual Review",
+          "final_score": 0.225,
+          "reasons": [
+            "KYC status requires manual review due to mismatches and red flags.",
+            "Occupation risk score is medium, necessitating further evaluation."
+          ]
+        }
+      }
+    }
+  ],
+  "audit_trail": {
+    "ingest": {
+      "status": "Issues Found",
+      "validation_issues": [
+        "Missing section: personal_details",
+        "Missing section: contact_info",
+        "Missing section: health_info",
+        "Missing section: coverage_selection",
+        "Missing section: nominee_details",
+        "Missing section: payment"
+      ],
+      "data": {
+        "error": "Error code: 400 - {'error': {'message': \"Invalid schema for response_format 'IngestOutput': In context=('properties', 'personal_details'), 'additionalProperties' is required to be supplied and to be false.\", 'type': 'invalid_request_error', 'param': 'response_format', 'code': None}}",
+        "normalized_application": {},
+        "manual_validation_issues": [
+          "Missing section: personal_details",
+          "Missing section: contact_info",
+          "Missing section: health_info",
+          "Missing section: coverage_selection",
+          "Missing section: nominee_details",
+          "Missing section: payment"
+        ],
+        "validated": false
+      }
+    },
+    "document_processing": {
+      "ocr_status": "skipped",
+      "reason": "no_documents_found"
+    },
+    "kyc": {
+      "status": "Manual Review",
+      "document_classification": {},
+      "data": {
+        "kyc_status": "Manual Review",
+        "kyc_confidence": 0.7,
+        "personal_verification": {
+          "name_match": false,
+          "dob_match": true,
+          "id_match": false,
+          "overall": "needs_review"
+        },
+        "nominee_verification": {
+          "name_match": true,
+          "dob_match": true,
+          "overall": "verified"
+        },
+        "mismatches": [
+          {
+            "field": "Name",
+            "form_value": "John Doe",
+            "ocr_value": "Jon Doe",
+            "severity": "medium"
+          },
+          {
+            "field": "ID Number",
+            "form_value": "ABCDE1234F",
+            "ocr_value": "ABCD1234F",
+            "severity": "high"
+          }
+        ],
+        "red_flags": [
+          "Non-Standard proof used"
+        ],
+        "llm_explanation": "The verification process identified mismatches in the personal details, including a medium-severity name mismatch and a high-severity ID number mismatch. Additionally, the use of non-standard proof raises a potential risk factor, requiring manual review for final decision.",
+        "documents_verified": 0,
+        "source": "Document OCR + Form Data Reconciliation",
+        "document_classification": {}
+      }
+    },
+    "health": {
+      "risk_score": 25.0,
+      "medical_exam_required": false,
+      "rule_findings": [],
+      "data": {
+        "medical_exam_required": false,
+        "reason": "The applicant's details do not meet the criteria for requiring a medical exam.",
+        "risk_score": 25.0,
+        "risk_category": "Low",
+        "recommendation": "Proceed with standard underwriting process without additional medical examination."
+      }
+    },
+    "financial": {
+      "risk_score": null,
+      "rule_findings": [],
+      "data": {
+        "status": "error",
+        "error": "No PAN",
+        "source": "MCP"
+      }
+    },
+    "occupation": {
+      "risk_score": 50.0,
+      "risk_category": "Medium",
+      "recommendation": "The occupation presents a moderate level of risk based on industry standards."
+    },
+    "insurance_history": {
+      "status": "error",
+      "error": "No PAN",
+      "source": "MCP"
+    },
+    "medical_exam": {
+      "medical_exam_required": false,
+      "status": "not_required",
+      "timestamp": "2025-12-04T14:32:41.217391"
+    }
+  }
+}

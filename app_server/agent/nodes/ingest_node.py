@@ -49,6 +49,32 @@ def ingest_node(state: AgentState):
             for field in fields:
                 if field not in app[section]:
                     validation_issues.append(f"Missing field: {section}.{field}")
+                    
+    # --- Precision Underwriting: Ingest Checks ---
+    
+    # 1. Nominee Validation
+    # Rule: Nominee must be Spouse, Child, or Parent for standard processing.
+    # Others (Sibling, Friend, etc.) require manual review for Insurable Interest.
+    nominee = app.get("nominee_details", {})
+    relation = nominee.get("relation", "").lower()
+    allowed_relations = ["spouse", "wife", "husband", "son", "daughter", "father", "mother", "parent", "child"]
+    if relation and relation not in allowed_relations:
+        validation_issues.append(f"Nominee Relation '{relation}' requires Manual Review for Insurable Interest.")
+        
+    # 2. Backdating Check
+    # Rule: Policy Start Date cannot be > 3 months in past (simplification)
+    # Ideally check financial year boundaries.
+    policy = app.get("coverage_selection", {})
+    # Assuming 'startDate' might exist, though not in required fields yet
+    start_date_str = policy.get("startDate")
+    if start_date_str:
+        try:
+            from datetime import datetime, timedelta
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d")
+            if start_date < datetime.now() - timedelta(days=90):
+                validation_issues.append(f"Policy Backdating > 90 days ({start_date_str}) requires approval.")
+        except:
+            pass
 
     prompt = INGEST_PROMPT.format(application_json=json.dumps(app))
 

@@ -43,6 +43,30 @@ def decision_node(state: AgentState):
         )
         parsed_output = resp.choices[0].message.parsed
         decision = parsed_output.model_dump()
+        
+        # Update MongoDB status
+        from app_server.utils.clients import db
+        from bson import ObjectId
+        
+        app_id = state.get("application_id")
+        if app_id:
+            status = "completed"
+            if decision.get("decision") == "Manual Review":
+                status = "pending_review"
+            elif decision.get("decision") == "Decline":
+                status = "rejected"
+            elif decision.get("decision") == "Accept":
+                status = "approved"
+                
+            try:
+                db["life_insurance_applications"].update_one(
+                    {"_id": ObjectId(app_id)},
+                    {"$set": {"status": status, "policy_decision": decision}}
+                )
+                print(f"✅ Updated MongoDB status to: {status}")
+            except Exception as db_err:
+                print(f"⚠️ Failed to update MongoDB status: {db_err}")
+
     except Exception as e:
         print(f"❌ Error in Decision LLM: {e}")
         decision = {

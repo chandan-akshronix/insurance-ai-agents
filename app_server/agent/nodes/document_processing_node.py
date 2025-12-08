@@ -19,7 +19,7 @@ def document_processing_node(state: AgentState):
         print("ℹ️  Documents already processed. Skipping OCR.")
         return {}
     
-    def call_vision(image_path):
+    def call_vision(image_path, doc_type_hint="unknown"):
         try:
             # Check if it's a URL or local file
             if image_path.startswith(('http://', 'https://')):
@@ -29,10 +29,24 @@ def document_processing_node(state: AgentState):
                     print(f"🔐 Signed Azure Blob URL: {image_path[:50]}...")
 
                 # For URLs, use URL directly in vision API
-                prompt = """
-You are a document extraction model. Extract the fields from PAN or Aadhaar document if visible. Return JSON only:
-{ "document_type": "PAN|Aadhaar", "name":"", "father_name":"","gender":"","dob":"","id_number":"" }
-If a field is not present, set it to null.
+                prompt = f"""
+You are a smart document extraction assistant.
+1. **Analyze the image content** to identify the document type.
+2. The user labeled this as: '{doc_type_hint}' (Use this only as a hint).
+3. Extract relevant fields based on the **actual identified type**.
+
+Supported Types & Fields:
+1. Identity Proof (kyc_document, id_card, pan_card) -> Extract: document_type, name, father_name, dob, id_number, address.
+2. Financial Proof (salary_slip, itr, bank_statement) -> Extract: document_type, employer_name, net_income (monthly), pay_period, statement_date.
+3. Insurance Policy (policy_document) -> Extract: document_type, insurer_name, policy_number, sum_assured, policy_start_date.
+4. General/Other -> Extract: document_type (classify it), summary, key_dates, key_names.
+
+Return JSON only:
+{{
+  "document_category": "Identity|Financial|Insurance|General|Unknown",
+  "specific_type": "Detected Type (e.g. PAN, Aadhaar, Resume, Screenshot)",
+  "extracted_data": {{ ...fields... }}
+}}
 """
                 resp = azure_client.chat.completions.create(
                     model=AZURE_DEPLOYMENT_NAME,
@@ -43,7 +57,7 @@ If a field is not present, set it to null.
                             {"type": "image_url", "image_url": {"url": image_path}}
                         ]
                     }],
-                    max_tokens=500,
+                    max_tokens=800,
                     temperature=0.0,
                     response_format={"type": "json_object"}
                 )
@@ -51,10 +65,24 @@ If a field is not present, set it to null.
                 # For local files, encode to base64
                 if os.path.exists(image_path):
                     img_b64 = encode_image_to_b64(image_path)
-                    prompt = """
-You are a document extraction model. Extract the fields from PAN or Aadhaar document if visible. Return JSON only:
-{ "document_type": "PAN|Aadhaar", "name":"", "father_name":"","gender":"","dob":"","id_number":"" }
-If a field is not present, set it to null.
+                    prompt = f"""
+You are a smart document extraction assistant.
+1. **Analyze the image content** to identify the document type.
+2. The user labeled this as: '{doc_type_hint}' (Use this only as a hint).
+3. Extract relevant fields based on the **actual identified type**.
+
+Supported Types & Fields:
+1. Identity Proof (kyc_document, id_card, pan_card) -> Extract: document_type, name, father_name, dob, id_number, address.
+2. Financial Proof (salary_slip, itr, bank_statement) -> Extract: document_type, employer_name, net_income (monthly), pay_period, statement_date.
+3. Insurance Policy (policy_document) -> Extract: document_type, insurer_name, policy_number, sum_assured, policy_start_date.
+4. General/Other -> Extract: document_type (classify it), summary, key_dates, key_names.
+
+Return JSON only:
+{{
+  "document_category": "Identity|Financial|Insurance|General|Unknown",
+  "specific_type": "Detected Type (e.g. PAN, Aadhaar, Resume, Screenshot)",
+  "extracted_data": {{ ...fields... }}
+}}
 """
                     resp = azure_client.chat.completions.create(
                         model=AZURE_DEPLOYMENT_NAME,
@@ -65,7 +93,7 @@ If a field is not present, set it to null.
                                 {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{img_b64}"}}
                             ]
                         }],
-                        max_tokens=500,
+                        max_tokens=800,
                         temperature=0.0,
                         response_format={"type": "json_object"}
                     )
@@ -91,7 +119,7 @@ If a field is not present, set it to null.
                     "document_type": doc_type,
                     "filename": filename,
                     "url": url,
-                    "ocr_result": call_vision(url)
+                    "ocr_result": call_vision(url, doc_type_hint=doc_type)
                 }
             except Exception as e:
                 results[filename] = {"error": str(e)}

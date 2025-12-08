@@ -21,6 +21,51 @@ def kyc_node(state: AgentState):
         if "ocr_result" in doc_result:
             ocr_extractions[doc_key] = doc_result["ocr_result"]
     
+    # --- Precision Underwriting: Document Classification ---
+    # Standard Proofs: Passport, PAN, Driving License, Aadhaar
+    # Non-Standard Proofs: Voter ID, Ration Card
+    
+    # Standard Proofs: Passport, PAN, Driving License, Aadhaar, UID
+    # Non-Standard Proofs: Voter ID, Ration Card
+    # We also allow generic "image" or "screenshot" if they contain valid ID keywords (handled by OCR check)
+    
+    standard_proofs = ["passport", "pan", "driving license", "aadhaar", "uid", "id card", "kyc"]
+    non_standard_proofs = ["voter id", "ration card"]
+    
+    doc_classification = {}
+    non_standard_flag = False
+    
+    for doc_key, extraction in ocr_extractions.items():
+        # Look for document type in multiple places
+        extracted_data = extraction.get("extracted_data", {})
+        doc_type_candidates = [
+            extracted_data.get("document_type", ""),
+            extraction.get("specific_type", ""),
+            extraction.get("document_type", "")
+        ]
+        
+        # Use the first non-empty candidate
+        doc_type_ocr = next((cand for cand in doc_type_candidates if cand), "").lower()
+        
+        classification = "Unknown"
+        if any(sp in doc_type_ocr for sp in standard_proofs):
+            classification = "Standard"
+        elif any(nsp in doc_type_ocr for nsp in non_standard_proofs):
+            classification = "Non-Standard"
+            non_standard_flag = True
+        else:
+            # If unknown but filename indicates it might be valid (e.g. "WhatsApp Image..."), we can be lenient
+            # or check if OCR extracted valid data despite "Unknown" type
+            if extracted_data and (extracted_data.get("name") or extracted_data.get("id_number")):
+                 classification = "Standard (Inferred)"
+            else:
+                 classification = "Unknown"
+            
+        doc_classification[doc_key] = {
+            "type": doc_type_ocr,
+            "classification": classification
+        }
+
     prompt = f"""
 You are a KYC reconciliation assistant. Compare user-supplied personal and nominee details with OCR-extracted data from submitted documents.
 Analyze the extracted document data and form data to verify:
@@ -29,6 +74,10 @@ Analyze the extracted document data and form data to verify:
 3. ID numbers (PAN, Aadhaar) if present in documents
 4. Gender consistency
 5. Overall document authenticity indicators
+
+IMPORTANT:
+- Check Document Classification: {json.dumps(doc_classification)}
+- If "Non-Standard" proof is used, flag it as a potential risk factor.
 
 Return JSON only with keys:
 {{
@@ -65,6 +114,7 @@ Decision rules:
 - If major mismatches found -> low confidence or Rejected
 - If documents not readable -> Manual Review
 - If no critical mismatches -> Verified
+- If Non-Standard proof is used -> Add to red_flags
 """
     try:
         resp = azure_client.chat.completions.create(
@@ -79,6 +129,8 @@ Decision rules:
         # Add source information
         out["documents_verified"] = len(ocr_extractions)
         out["source"] = "Document OCR + Form Data Reconciliation"
+        out["document_classification"] = doc_classification # Add for transparency
+        
     except Exception as e:
         out = {"error": str(e)}
     

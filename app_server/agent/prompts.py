@@ -17,7 +17,7 @@ Application JSON:
 
 KYC_PROMPT = """
 You are a KYC Verification Agent. Compare the provided Application Data with the Extracted Document Data.
-Your goal is to verify if the applicant is who they say they are.
+Your goal is to verify if the applicant is who they say they are and if the documents are valid standard proofs.
 
 Application Data:
 {app_data}
@@ -29,8 +29,10 @@ Task:
 1. Compare Name, DOB, and ID Numbers (PAN/Aadhaar).
 2. Check for fuzzy matches (e.g., "Kumar" vs "Kr.").
 3. Identify any major discrepancies.
-4. Assign a confidence score (0.0 to 1.0).
-5. Determine status: verified, failed, or manual_review.
+4. **Classify Documents**: Identify if proofs are "Standard" (Passport, PAN, DL, Aadhaar) or "Non-Standard" (Voter ID, Ration Card).
+5. **Flag Non-Standard Proofs**: If only Non-Standard proofs are provided, flag for manual review.
+6. Assign a confidence score (0.0 to 1.0).
+7. Determine status: verified, failed, or manual_review.
 """
 
 HEALTH_PROMPT = """
@@ -45,10 +47,14 @@ Underwriting Guidelines Excerpt:
 Task:
 1. Calculate BMI if weight/height are present.
 2. Check for tobacco usage or history of illness.
-3. Compare against guidelines.
-4. Determine if medical exam is required (True/False).
-5. Assign a risk score (0-100) where 0 is low risk, 100 is high risk.
-6. Provide a recommendation.
+3. **Check Non-Medical Limits**:
+   - If Age < 35 and Sum Assured > 15 Lakhs (General) -> Medical Exam REQUIRED.
+   - If Age 36-50 and Sum Assured > 10 Lakhs -> Medical Exam REQUIRED.
+   - If Age > 50 and Sum Assured > 5 Lakhs -> Medical Exam REQUIRED.
+4. Compare against guidelines.
+5. Determine if medical exam is required (True/False).
+6. Assign a risk score (0-100) where 0 is low risk, 100 is high risk.
+7. Provide a recommendation.
 """
 
 FINANCIAL_PROMPT = """
@@ -65,9 +71,16 @@ Policy Details:
 
 Task:
 1. Calculate Income-to-Coverage ratio.
-2. Check credit score and financial stability.
-3. Assign a risk score (0-100).
-4. Determine eligibility status.
+2. **Check TRSA Limits**:
+   - Calculate Total Rated Sum Assured (Current + Previous).
+   - If TRSA > 25 Lakhs (General Business), Income Proof is MANDATORY.
+   - If TRSA > 40 Lakhs (Preferred Partner), Income Proof is MANDATORY.
+3. **Check NRI Limits**:
+   - If Applicant is NRI/PIO/OCI and Age <= 45, Max Cover is 1.5 Cr.
+   - If exceeded, DECLINE or limit cover.
+4. Check credit score and financial stability.
+5. Assign a risk score (0-100).
+6. Determine eligibility status.
 """
 
 INSURANCE_HISTORY_PROMPT = """
